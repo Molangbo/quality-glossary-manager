@@ -1,0 +1,3 @@
+# Core features use the Python standard library only.
+# Optional TTS feature:
+# edge-tts
