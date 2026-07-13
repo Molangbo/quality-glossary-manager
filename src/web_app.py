@@ -2598,8 +2598,7 @@ class GlossaryHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_anki_file(self):
-        if not ANKI_EXPORT_PATH.exists():
-            export_anki_cards_to_file()
+        export_anki_cards_to_file()
         body = ANKI_EXPORT_PATH.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", "text/csv; charset=utf-8")
