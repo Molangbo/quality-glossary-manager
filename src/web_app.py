@@ -848,7 +848,7 @@ HTML_PAGE = r"""<!doctype html>
       <div class="import-body">
         <div class="field full">
           <label for="importText">粘贴内容</label>
-          <textarea class="import-textarea" id="importText" placeholder="可以一次粘贴 1 到 10 条，例如：&#10;1. APQP (Advanced Product Quality Planning)&#10;中文解释：...&#10;Example Sentence:&#10;The APQP activities are progressing...&#10;Meeting Phrases:&#10;- Are all APQP deliverables on schedule?"></textarea>
+          <textarea class="import-textarea" id="importText" placeholder="可以直接粘贴完整一期（15 到 20 条）普通文字或 Markdown 内容，例如：&#10;1. APQP (Advanced Product Quality Planning)&#10;Type&#10;- Entry Form: Acronym&#10;- Recommended Category / Process Stage: APQP / Product Development&#10;- Common Documents / Content Where It Appears: APQP Checklist, Project Timeline&#10;Chinese Explanation&#10;产品质量先期策划。...&#10;Example Sentence&#10;The APQP activities are progressing...&#10;Meeting Phrases&#10;- Are all APQP deliverables on schedule?"></textarea>
         </div>
         <div class="form-grid">
           <div class="field">
@@ -1407,6 +1407,7 @@ HTML_PAGE = r"""<!doctype html>
             <td>${escapeHtml(entry.abbreviation)}</td>
             <td>${escapeHtml(entry.chinese)}</td>
             <td>${escapeHtml(entry.entry_type)}</td>
+            <td>${escapeHtml(entry.categories)}</td>
             <td>${escapeHtml(entry.example)}</td>
             <td><button type="button" data-fill-import="${index}">填入表单</button></td>
           </tr>
@@ -1423,6 +1424,7 @@ HTML_PAGE = r"""<!doctype html>
               <th>缩写</th>
               <th>中文名称</th>
               <th>类型</th>
+              <th>分类</th>
               <th>例句</th>
               <th>操作</th>
             </tr>
@@ -1914,6 +1916,13 @@ def clean_import_line(line):
     return text.strip()
 
 
+def clean_markdown_text(value):
+    text = clean_text(value)
+    text = re.sub(r"^#{1,6}\s*", "", text)
+    text = text.replace("**", "").replace("__", "")
+    return text.strip()
+
+
 def is_abbreviation_text(text):
     value = clean_text(text).replace(" ", "")
     if not (2 <= len(value) <= 14):
@@ -1929,7 +1938,7 @@ def has_abbreviation_feature(text):
 
 
 def parse_title_fields(title):
-    title = clean_text(title)
+    title = clean_markdown_text(title)
     title = re.sub(r"\s+", " ", title)
     match = re.match(r"^(?P<outer>.+?)\s*[\(（]\s*(?P<inner>.+?)\s*[\)）]\s*$", title)
     if not match:
@@ -1951,6 +1960,11 @@ def first_chinese_name(explanation):
     if not text:
         return ""
     text = re.sub(r"^[：:]\s*", "", text)
+    quoted_match = re.search(r"表示\s*[“\"]([^”\"]+)[”\"]", text)
+    if quoted_match:
+        quoted_name = clean_text(quoted_match.group(1)).rstrip("。；;.!！")
+        if quoted_name and len(quoted_name) <= 40:
+            return quoted_name
     segment = re.split(r"[。；;\n]", text, maxsplit=1)[0]
     segment = clean_text(segment)
     if len(segment) > 40:
@@ -1959,16 +1973,18 @@ def first_chinese_name(explanation):
 
 
 def parse_section_label(line):
-    lowered = line.lower().strip()
+    candidate = clean_markdown_text(line)
     patterns = [
+        ("type", r"^(?:type|类型)\s*[：:]?\s*(.*)$"),
         ("explanation", r"^(?:chinese\s+explanation|中文解释)(?:\s*[（(].*?[）)])?\s*[：:]?\s*(.*)$"),
         ("example", r"^(?:example\s+sentence|例句)(?:\s*[（(].*?[）)])?\s*[：:]?\s*(.*)$"),
         ("meeting", r"^(?:meeting\s+phrases?|会议句式|会议表达)(?:\s*[（(].*?[）)])?\s*[：:]?\s*(.*)$"),
+        ("daily_report", r"^(?:daily\s+report\s+phrases?|日报句式|日报表达)(?:\s*[（(].*?[）)])?\s*[：:]?\s*(.*)$"),
     ]
     for key, pattern in patterns:
-        match = re.match(pattern, lowered, flags=re.IGNORECASE)
+        match = re.match(pattern, candidate, flags=re.IGNORECASE)
         if match:
-            return key, clean_text(line[match.start(1):] if match.start(1) >= 0 else "")
+            return key, clean_text(match.group(1))
     return None, ""
 
 
@@ -1995,13 +2011,135 @@ def guess_entry_type(english, abbreviation):
     return ENTRY_TYPE_WORD
 
 
+def parse_type_metadata(lines):
+    text = "\n".join(clean_markdown_text(clean_import_line(line)) for line in lines)
+    label_patterns = {
+        "entry_form": r"(?:entry\s+form|词条形式)",
+        "category": r"(?:recommended\s+category(?:\s*/\s*process\s+stage)?|推荐分类(?:\s*/\s*流程阶段)?)",
+        "documents": r"(?:common\s+documents(?:\s*/\s*(?:situations|content\s+where\s+it\s+appears))?|常见文档(?:\s*/\s*(?:场景|出现位置))?)",
+    }
+    combined = "|".join(f"(?P<{key}>{pattern})" for key, pattern in label_patterns.items())
+    matches = list(re.finditer(rf"(?:{combined})\s*[：:]", text, flags=re.IGNORECASE))
+    metadata = {"entry_form": "", "category": "", "documents": ""}
+
+    for index, match in enumerate(matches):
+        key = next((name for name in label_patterns if match.group(name)), None)
+        if not key:
+            continue
+        next_start = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        value = text[match.end() : next_start]
+        value = re.sub(r"\s*\d+\s*[）).、]\s*$", "", value)
+        value = re.sub(r"^[\s\-*:；;]+|[\s\-*:；;]+$", "", value)
+        metadata[key] = clean_text(value)
+    return metadata
+
+
+def entry_type_from_metadata(entry_form, english, abbreviation):
+    value = clean_text(entry_form).lower()
+    if re.search(r"\bacronym\b|缩写", value):
+        return ENTRY_TYPE_ABBREVIATION
+    if re.search(r"\b(?:meeting|daily\s+report)\s+phrase\b|(?:会议|日报)句式", value):
+        return "会议句式"
+    if re.search(r"\bsingle\s+word\b|英文单词|单词", value):
+        return ENTRY_TYPE_WORD
+    if re.search(r"\b(?:professional\s+term|verb\s+phrase|phrase)\b|专业术语|词组", value):
+        return ENTRY_TYPE_PHRASE
+    return guess_entry_type(english, abbreviation)
+
+
+def merge_categories(*category_values):
+    merged = []
+    seen = set()
+    for raw_value in category_values:
+        for category in normalize_categories(clean_text(raw_value)).split(","):
+            value = category.strip()
+            key = value.casefold()
+            if value and key not in seen:
+                seen.add(key)
+                merged.append(value)
+    return ", ".join(merged)
+
+
+def detect_import_document(lines, category, source):
+    document_title = ""
+    for line in lines:
+        match = re.match(r"^\s*#(?!#)\s+(.+?)\s*$", line)
+        if match:
+            document_title = clean_markdown_text(match.group(1))
+            break
+
+    known_titles = (
+        "project quality daily report english vocabulary & expressions",
+        "automotive project quality english vocabulary & expressions",
+    )
+    if not document_title:
+        for line in lines:
+            candidate = clean_markdown_text(clean_import_line(line))
+            if candidate.lower().startswith(known_titles):
+                document_title = candidate
+                break
+
+    detected_category = ""
+    detected_source = document_title
+    lowered = document_title.lower()
+    if lowered.startswith("project quality daily report english vocabulary & expressions"):
+        detected_category = "项目质量日报英语"
+    elif lowered.startswith("automotive project quality english vocabulary & expressions"):
+        detected_category = "汽车项目质量英语"
+    else:
+        section_names = {
+            clean_markdown_text(clean_import_line(line)).rstrip("：:").lower()
+            for line in lines
+        }
+        has_daily_report_phrases = any(
+            re.fullmatch(r"daily\s+report\s+phrases?", name)
+            for name in section_names
+        )
+        has_meeting_phrases = any(
+            re.fullmatch(r"meeting\s+phrases?", name)
+            for name in section_names
+        )
+        if has_daily_report_phrases and not has_meeting_phrases:
+            detected_category = "项目质量日报英语"
+            detected_source = "ChatGPT 项目质量日报词条"
+        elif has_meeting_phrases and not has_daily_report_phrases:
+            detected_category = "汽车项目质量英语"
+            detected_source = "ChatGPT 汽车项目质量词条"
+
+    selected_category = clean_text(category)
+    if detected_category and (not selected_category or selected_category == DEFAULT_IMPORT_CATEGORY):
+        selected_category = detected_category
+    selected_category = selected_category or DEFAULT_IMPORT_CATEGORY
+
+    selected_source = clean_text(source)
+    if detected_source and (not selected_source or selected_source == DEFAULT_IMPORT_SOURCE):
+        selected_source = detected_source
+    selected_source = selected_source or DEFAULT_IMPORT_SOURCE
+    return selected_category, selected_source
+
+
+def is_import_stop_section(line):
+    candidate = clean_markdown_text(line).rstrip("：:").strip().lower()
+    return bool(
+        re.fullmatch(
+            r"(?:daily\s+report\s+practice|common\s+follow-up\s+questions|复习练习|常见追问)",
+            candidate,
+        )
+    )
+
+
 def parse_import_block(number, title, block_lines, category, source):
-    sections = {"explanation": [], "example": [], "meeting": []}
+    sections = {"type": [], "explanation": [], "example": [], "meeting": [], "daily_report": []}
     current_section = None
 
     for raw_line in block_lines:
         line = clean_import_line(raw_line)
         if not line:
+            continue
+        if is_import_stop_section(line):
+            break
+        if re.fullmatch(r"(?:-{3,}|_{3,}|\*{3,})", line.replace(" ", "")):
+            current_section = None
             continue
         section, inline_value = parse_section_label(line)
         if section:
@@ -2009,16 +2147,25 @@ def parse_import_block(number, title, block_lines, category, source):
             if inline_value:
                 sections[section].append(inline_value)
             continue
+        if re.match(r"^#{1,6}\s+", line):
+            current_section = None
+            continue
         if current_section:
             sections[current_section].append(line)
 
     english, abbreviation, title_note = parse_title_fields(title)
+    type_metadata = parse_type_metadata(sections["type"])
     explanation = normalize_section_text(sections["explanation"])
     example = normalize_section_text(sections["example"])
     meeting_note = normalize_section_text(sections["meeting"], bullet=True)
+    daily_report_note = normalize_section_text(sections["daily_report"])
     note_parts = []
     if title_note:
         note_parts.append(f"英文括号说明：{title_note}")
+    if type_metadata["documents"]:
+        note_parts.append(f"常见文档 / 场景：{type_metadata['documents']}")
+    if daily_report_note:
+        note_parts.append(f"Daily Report Phrase:\n{daily_report_note}")
     if meeting_note:
         note_parts.append(f"Meeting Phrases:\n{meeting_note}")
 
@@ -2026,8 +2173,8 @@ def parse_import_block(number, title, block_lines, category, source):
         "chinese": first_chinese_name(explanation),
         "english": english,
         "abbreviation": abbreviation,
-        "entry_type": guess_entry_type(english, abbreviation),
-        "categories": category,
+        "entry_type": entry_type_from_metadata(type_metadata["entry_form"], english, abbreviation),
+        "categories": merge_categories(category, type_metadata["category"]),
         "explanation": explanation,
         "example": example,
         "source": source,
@@ -2044,15 +2191,21 @@ def parse_import_block(number, title, block_lines, category, source):
 
 def parse_import_entries(raw_text, category="", source=""):
     text = str(raw_text or "").replace("\r\n", "\n").replace("\r", "\n")
-    category = clean_text(category) or DEFAULT_IMPORT_CATEGORY
-    source = clean_text(source) or DEFAULT_IMPORT_SOURCE
     lines = text.split("\n")
-    heading_pattern = re.compile(r"^\s*(?:#+\s*)?(\d+)[\.．、)]\s+(.+?)\s*$")
-    headings = []
-    for index, line in enumerate(lines):
-        match = heading_pattern.match(line)
-        if match:
-            headings.append((index, match.group(1), clean_text(match.group(2))))
+    category, source = detect_import_document(lines, category, source)
+    markdown_heading_pattern = re.compile(r"^\s*##(?!#)\s*(\d+)[\.．、)]\s*(.+?)\s*$")
+    legacy_heading_pattern = re.compile(r"^\s*(\d+)[\.．、)]\s+(.+?)\s*$")
+    headings = [
+        (index, match.group(1), clean_markdown_text(match.group(2)))
+        for index, line in enumerate(lines)
+        if (match := markdown_heading_pattern.match(line))
+    ]
+    if not headings:
+        headings = [
+            (index, match.group(1), clean_markdown_text(match.group(2)))
+            for index, line in enumerate(lines)
+            if (match := legacy_heading_pattern.match(line))
+        ]
 
     if not headings:
         first_line = next((clean_import_line(line) for line in lines if clean_import_line(line)), "")

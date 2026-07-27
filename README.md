@@ -503,7 +503,7 @@ data/glossary.db
 使用方式：
 
 1. 点击网页顶部的“批量导入”。
-2. 把 ChatGPT 输出的 1 到 10 条词条整体粘贴到文本框。
+2. 把 ChatGPT 输出的完整一期词条整体粘贴到文本框（支持 15 到 20 条）。
 3. 点击“解析预览”。
 4. 检查英文名称、缩写、中文名称、解释和例句是否正确。
 5. 点击“导入全部”写入数据库。
@@ -516,6 +516,40 @@ First Pass Yield (FPY)
 Gauge R&R (Repeatability and Reproducibility)
 ```
 
+支持直接粘贴普通文字，也支持带 Markdown 标题的完整输出。复制内容不需要保留 `#`、`##` 或 `###` 标记，例如：
+
+```text
+1. Complete
+Type
+- Entry Form: Single Word
+- Recommended Category: Completed Tasks
+- Common Documents / Situations: Daily Report / Task List
+Chinese Explanation
+Complete 表示“完成某项工作”。
+Example Sentence
+I completed the document update today.
+Daily Report Phrase
+Today, I completed the document update and submitted it for review.
+```
+
+带项目标题的 Markdown 输出同样支持：
+
+```text
+# Project Quality Daily Report English Vocabulary & Expressions | Vol. N
+## 1. Follow up on
+### Type
+### Chinese Explanation
+### Example Sentence
+### Daily Report Phrase
+
+# Automotive Project Quality English Vocabulary & Expressions | Vol. N
+## 1. APQP (Advanced Product Quality Planning)
+### Type
+### Chinese Explanation
+### Example Sentence
+### Meeting Phrases
+```
+
 识别规则：
 
 - 缩写在前、全称在后时，自动把前半部分放入“缩写”，括号内容放入“英文名称”。
@@ -523,7 +557,14 @@ Gauge R&R (Repeatability and Reproducibility)
 - 类似 `Gauge R&R` 的行业术语会保留为英文名称和缩写，括号内容会写入备注。
 - `Chinese Explanation` 或 `中文解释` 会写入中文解释。
 - `Example Sentence` 会写入例句。
-- `Meeting Phrases` 会写入备注。
+- `Type` 中的 `Entry Form` 会自动转换为词库中的词条类型。
+- `Recommended Category` 或 `Recommended Category / Process Stage` 会与统一分类合并后写入分类。
+- `Common Documents / Situations` 或 `Common Documents / Content Where It Appears` 会写入备注。
+- `Daily Report Phrase` 和 `Meeting Phrases` 会写入备注。
+- 完整输出末尾的 `Daily Report Practice`、`Common Follow-up Questions` 等非词条板块不会被误导入。
+- 如果识别到完整项目标题，会自动把项目名称和卷号写入来源，并区分“项目质量日报英语”和“汽车项目质量英语”两类词库。
+- 如果复制内容不包含项目标题，会根据 `Daily Report Phrase` 或 `Meeting Phrases` 自动判断所属词库和来源。
+- `---` 等词条分隔线会自动忽略，不会进入备注。
 
 批量导入默认掌握程度为“学习中”。如果英文、缩写或中文名称已经存在，预览中会提示重复，导入时默认跳过重复项。
 
