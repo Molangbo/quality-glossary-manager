@@ -2193,8 +2193,8 @@ def parse_import_entries(raw_text, category="", source=""):
     text = str(raw_text or "").replace("\r\n", "\n").replace("\r", "\n")
     lines = text.split("\n")
     category, source = detect_import_document(lines, category, source)
-    markdown_heading_pattern = re.compile(r"^\s*##(?!#)\s*(\d+)[\.．、)]\s*(.+?)\s*$")
-    legacy_heading_pattern = re.compile(r"^\s*(\d+)[\.．、)]\s+(.+?)\s*$")
+    markdown_heading_pattern = re.compile(r"^\s*##(?!#)\s*(\d+)[\.．、)）]\s*(.+?)\s*$")
+    legacy_heading_pattern = re.compile(r"^\s*(\d+)[\.．、)）]\s*(.+?)\s*$")
     headings = [
         (index, match.group(1), clean_markdown_text(match.group(2)))
         for index, line in enumerate(lines)

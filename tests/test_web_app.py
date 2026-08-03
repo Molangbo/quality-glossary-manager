@@ -213,6 +213,27 @@ Meeting Phrases
         self.assertEqual(first["source"], "ChatGPT 汽车项目质量词条")
         self.assertNotIn("--", first["note"])
 
+    def test_fullwidth_parenthesis_entry_numbering(self):
+        entries = self.parse(
+            """
+1）Containment Action
+Type
+- Entry Form: Professional Term
+Chinese Explanation
+遏制措施。
+
+2）Root Cause Analysis
+Type
+- Entry Form: Professional Term
+Chinese Explanation
+根本原因分析。
+"""
+        )
+
+        self.assertEqual(len(entries), 2)
+        self.assertEqual(entries[0]["english"], "Containment Action")
+        self.assertEqual(entries[1]["english"], "Root Cause Analysis")
+
 
 if __name__ == "__main__":
     unittest.main()
